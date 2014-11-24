@@ -83,6 +83,7 @@ EXAMPLES = '''
 
 V1_MSG_URI = "https://api.hipchat.com/v1/rooms/message"
 
+
 def msg_uri(version, room="notify"):
     ''''message uri based on version'''
     if version == "2":
@@ -95,26 +96,29 @@ def send_msg(module, token, room, msg_from, msg, msg_format='text',
     '''sending message to hipchat'''
 
     params = {}
-    if version == "1":
-        params['room_id'] = room
-        params['from'] = msg_from[:15]  # max length is 15
-        params['api'] = api
     params['message'] = msg
     params['message_format'] = msg_format
     params['color'] = color
 
-    if notify:
-        params['notify'] = 1
-    else:
-        params['notify'] = 0
+    if version == "1":
+        params['room_id'] = room
+        params['api'] = api
+        params['from'] = msg_from[:15]  # max length is 15
+        if notify:
+            params['notify'] = 1
+        else:
+            params['notify'] = 0
 
     url = api + "?auth_token=%s" % (token)
     data = urllib.urlencode(params)
-    response, info = fetch_url(module, url, data=data)
+
+    headers = {'content-type': 'application/x-www-form-urlencoded'}
+
+    response, info = fetch_url(module, url, data=data, headers=headers, method='POST')
     if info['status'] == 200:
         return response.read()
     else:
-        module.fail_json(msg="failed to send message, return status=%s" % str(info))
+        module.fail_json(msg="failed to send message, return status=%s" % str(params))
 
 
 # ===========================================
