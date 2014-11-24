@@ -19,7 +19,7 @@ options:
     required: true
   from:
     description:
-      - Name the message will appear be sent from. max 15 characters.
+      - Name the message will appear be sent from. max 15 characters. (V1 Only)
         Over 15, will be shorten.
     required: false
     default: Ansible
@@ -54,6 +54,12 @@ options:
     default: 'yes'
     choices: ['yes', 'no']
     version_added: 1.5.1
+  version:
+    description:
+      - API version
+    required: false
+    default: 1
+    choices: [ 1, 2 ]
   api:
     description:
       - API url if using a self-hosted hipchat server
@@ -75,19 +81,27 @@ EXAMPLES = '''
 # HipChat module specific support methods.
 #
 
-MSG_URI = "https://api.hipchat.com/v1/rooms/message"
+V1_MSG_URI = "https://api.hipchat.com/v1/rooms/message"
+
+def msg_uri(version, room="notify"):
+    ''''message uri based on version'''
+    if version == "2":
+        return "https://api.hipchat.com/v2/room/" + room + "/notification"
+    return V1_MSG_URI
+
 
 def send_msg(module, token, room, msg_from, msg, msg_format='text',
-             color='yellow', notify=False, api=MSG_URI):
+             color='yellow', notify=False, version=1, api=False):
     '''sending message to hipchat'''
 
     params = {}
-    params['room_id'] = room
-    params['from'] = msg_from[:15]  # max length is 15
+    if version == "1":
+        params['room_id'] = room
+        params['from'] = msg_from[:15]  # max length is 15
+        params['api'] = api
     params['message'] = msg
     params['message_format'] = msg_format
     params['color'] = color
-    params['api'] = api
 
     if notify:
         params['notify'] = 1
@@ -100,7 +114,7 @@ def send_msg(module, token, room, msg_from, msg, msg_format='text',
     if info['status'] == 200:
         return response.read()
     else:
-        module.fail_json(msg="failed to send message, return status=%s" % str(info['status']))
+        module.fail_json(msg="failed to send message, return status=%s" % str(info))
 
 
 # ===========================================
@@ -119,8 +133,9 @@ def main():
                                                   "purple", "gray", "random"]),
             msg_format=dict(default="text", choices=["text", "html"]),
             notify=dict(default=True, type='bool'),
-            validate_certs = dict(default='yes', type='bool'),
-            api = dict(default=MSG_URI),
+            validate_certs=dict(default='yes', type='bool'),
+            version=dict(default=1),
+            api=dict(default=None),
         ),
         supports_check_mode=True
     )
@@ -132,12 +147,15 @@ def main():
     color = module.params["color"]
     msg_format = module.params["msg_format"]
     notify = module.params["notify"]
+    version = module.params["version"]
     api = module.params["api"]
+    if api is None:
+        api = msg_uri(version, room)
 
     try:
-        send_msg(module, token, room, msg_from, msg, msg_format, color, notify, api)
+        send_msg(module, token, room, msg_from, msg, msg_format, color, notify, version, api)
     except Exception, e:
-        module.fail_json(msg="unable to sent msg: %s" % e)
+        module.fail_json(msg="unable to send msg: %s" % e)
 
     changed = True
     module.exit_json(changed=changed, room=room, msg_from=msg_from, msg=msg)
