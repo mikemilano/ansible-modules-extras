@@ -64,7 +64,7 @@ options:
     description:
       - API url if using a self-hosted hipchat server
     required: false
-    default: 'https://api.hipchat.com/v1/rooms/message'
+    default: 'https://api.hipchat.com'
     version_added: 1.6.0
 
 
@@ -81,44 +81,46 @@ EXAMPLES = '''
 # HipChat module specific support methods.
 #
 
-V1_MSG_URI = "https://api.hipchat.com/v1/rooms/message"
+MSG_URI = "https://api.hipchat.com"
 
 
-def msg_uri(version, room="notify"):
-    ''''message uri based on version'''
-    if version == "2":
-        return "https://api.hipchat.com/v2/room/" + room + "/notification"
-    return V1_MSG_URI
-
-
-def send_msg(module, token, room, msg_from, msg, msg_format='text',
-             color='yellow', notify=False, version=1, api=False):
+def send_msg(module, token, room, msg_from, msg , msg_format='text',
+             color='yellow', notify=False, version=1, api=MSG_URI):
     '''sending message to hipchat'''
 
     params = {}
     params['message'] = msg
     params['message_format'] = msg_format
     params['color'] = color
+    data = ""
+    headers = ""
+    url = api
 
     if version == "1":
         params['room_id'] = room
         params['api'] = api
         params['from'] = msg_from[:15]  # max length is 15
-        if notify:
-            params['notify'] = 1
-        else:
-            params['notify'] = 0
+        params['notify'] = int(notify)
 
-    url = api + "?auth_token=%s" % (token)
-    data = urllib.urlencode(params)
+        url += "/v1/rooms/message"
+        data = urllib.urlencode(params)
+        headers = {'content-type': 'application/x-www-form-urlencoded'}
 
-    headers = {'content-type': 'application/x-www-form-urlencoded'}
+    elif version == "2":
+        params['notify'] = notify
+
+        url += "/v2/room/" + room + "/notification"
+
+        data = json.dumps(params)
+        headers = {'content-type': 'application/json'}
+
+    url += "?auth_token=%s" % (token)
 
     response, info = fetch_url(module, url, data=data, headers=headers, method='POST')
     if info['status'] == 200:
         return response.read()
     else:
-        module.fail_json(msg="failed to send message, return status=%s" % str(params))
+        module.fail_json(msg="failed to send message, return status=%s" % str(info['status']))
 
 
 # ===========================================
@@ -138,8 +140,8 @@ def main():
             msg_format=dict(default="text", choices=["text", "html"]),
             notify=dict(default=True, type='bool'),
             validate_certs=dict(default='yes', type='bool'),
-            version=dict(default=1),
-            api=dict(default=None),
+            version=dict(default='1', choices=['1', '2']),
+            api=dict(default=MSG_URI),
         ),
         supports_check_mode=True
     )
@@ -153,8 +155,7 @@ def main():
     notify = module.params["notify"]
     version = module.params["version"]
     api = module.params["api"]
-    if api is None:
-        api = msg_uri(version, room)
+
 
     try:
         send_msg(module, token, room, msg_from, msg, msg_format, color, notify, version, api)
